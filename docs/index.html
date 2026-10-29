@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sack or Stick?</title>
+<meta name="description" content="A football board-room dashboard that separates genuine decline from bad luck before a club makes a costly managerial decision.">
+<link rel="stylesheet" href="style.css">
+<script src="vendor/d3.min.js"></script>
+<script src="data/meta.js"></script>
+</head>
+<body>
+<div class="viz-root">
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">Football analytics · Top-5 European leagues · 2010–2027</p>
+    <h1>Sack or Stick?</h1>
+    <p class="lede">When results go wrong, boards fire managers. But is the team genuinely worse, or just unlucky?
+      This dashboard separates <strong>underlying strength</strong> from <strong>luck</strong>, so the decision rests on evidence instead of the league table.</p>
+  </div>
+</header>
+
+<nav class="controls" aria-label="Filters">
+  <div class="wrap controls-row">
+    <label>League
+      <select id="sel-league"></select></label>
+    <label>Season
+      <select id="sel-season"></select></label>
+    <label class="slider">As of matchday <output id="md-out">–</output>
+      <input id="sel-md" type="range" min="1" max="38" step="1"></label>
+    <label>Club
+      <select id="sel-team"></select></label>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <section class="panel verdict-panel" aria-live="polite">
+    <div class="verdict" id="verdict"></div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="grid2">
+    <figure class="panel chart">
+      <figcaption>
+        <h2>Luck map</h2>
+        <p>Actual points vs expected points (xPts) for every club so far. Above the line = results flatter the team; below = the team deserves more.</p>
+      </figcaption>
+      <div id="chart-luck" class="chart-box"></div>
+    </figure>
+    <figure class="panel chart">
+      <figcaption>
+        <h2 id="traj-title">Points vs expected, game by game</h2>
+        <p>Cumulative points against cumulative xPts. A widening gap is luck accumulating, and history says it does not last.</p>
+      </figcaption>
+      <div id="chart-traj" class="chart-box"></div>
+    </figure>
+  </section>
+
+  <section class="grid2">
+    <figure class="panel chart">
+      <figcaption>
+        <h2 id="elo-title">Underlying strength (Elo)</h2>
+        <p>Elo rating after each game. This is the signal a board should watch: it predicts the rest of the season better than points do.</p>
+      </figcaption>
+      <div id="chart-elo" class="chart-box"></div>
+    </figure>
+    <figure class="panel chart">
+      <figcaption>
+        <h2 id="proj-title">Where the season ends</h2>
+        <p>Distribution of final points from 5,000 simulations of the remaining fixtures, using current Elo ratings.</p>
+      </figcaption>
+      <div id="chart-proj" class="chart-box"></div>
+    </figure>
+  </section>
+
+  <section class="panel">
+    <div class="table-head">
+      <h2>Table, with the luck stripped out</h2>
+      <p>Click a column to sort, a row to focus a club. Projection and probabilities come from the simulation.</p>
+    </div>
+    <div class="table-scroll">
+      <table id="standings"></table>
+    </div>
+  </section>
+
+  <section class="evidence">
+    <h2 class="section-title">Why luck doesn't last: the evidence</h2>
+    <p class="section-lede" id="evidence-lede"></p>
+    <div class="grid3">
+      <figure class="panel chart">
+        <figcaption>
+          <h3>Luck in the first half vs the second</h3>
+          <p>Each dot is a club-season. If luck were a skill, dots would line up along a diagonal. They don't.</p>
+        </figcaption>
+        <div id="chart-persist" class="chart-box"></div>
+      </figure>
+      <figure class="panel chart">
+        <figcaption>
+          <h3>What predicts the second half?</h3>
+          <p>Share of variance in second-half points per game explained (R²) by each midseason signal.</p>
+        </figcaption>
+        <div id="chart-r2" class="chart-box"></div>
+      </figure>
+      <figure class="panel chart">
+        <figcaption>
+          <h3>Is the model honest?</h3>
+          <p>Predicted vs observed home-win rate on matches the model never saw (2019-20 onward).</p>
+        </figcaption>
+        <div id="chart-calib" class="chart-box"></div>
+      </figure>
+    </div>
+  </section>
+
+  <section class="panel method">
+    <h2>Method</h2>
+    <div class="method-grid" id="method"></div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>Data: <a href="https://github.com/openfootball/football.json" rel="noopener">openfootball/football.json</a> (public domain). Built for the AQX Sports Analytics Data Bowl 4.0.</p>
+</footer>
+<div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
