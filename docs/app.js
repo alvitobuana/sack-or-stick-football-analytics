@@ -6,6 +6,7 @@
   const SIMS = 5000;
   const fmt1 = d3.format(".1f");
   const fmtSigned = (v) => (v > 0 ? "+" : v < 0 ? "−" : "±") + fmt1(Math.abs(v));
+  const fmtSigned2 = (v) => (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(2);
   const pct = (v) => (v < 0.005 ? "<1%" : v > 0.995 ? ">99%" : Math.round(v * 100) + "%");
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -176,37 +177,131 @@
   }
 
   // ------------------------------------------------------------------ charts (live)
+  // luck class per club: same ±0.25 pts/game threshold the verdict uses
+  const LUCK_T = 0.25, ELO_T = 30;
+  const luckPg = (t) => (t.p ? t.luck / t.p : 0);
+  const luckColor = (t) => (luckPg(t) >= LUCK_T ? css("--div-pos") : luckPg(t) <= -LUCK_T ? css("--div-neg") : css("--other"));
+
+  // nearest-point hover + click layer for dense scatters
+  function pickLayer(F, data, px, py, onMove) {
+    const del = d3.Delaunay.from(data, px, py);
+    const ring = F.g.append("circle").attr("r", 9).attr("fill", "none").attr("stroke", css("--text-primary"))
+      .attr("stroke-width", 1.5).attr("visibility", "hidden").style("pointer-events", "none");
+    let cur = null;
+    F.g.append("rect").attr("width", F.w).attr("height", F.h).attr("fill", "transparent").style("cursor", "pointer")
+      .on("mousemove", (ev) => {
+        const [mx, my] = d3.pointer(ev);
+        cur = data[del.find(mx, my)];
+        ring.attr("cx", px(cur)).attr("cy", py(cur)).attr("visibility", "visible");
+        onMove(cur, ev);
+      })
+      .on("mouseleave", () => { ring.attr("visibility", "hidden"); hideTip(); })
+      .on("click", () => { if (cur) { state.team = cur.i; hideTip(); renderLive(); } });
+  }
+  function clubTip(t, C) {
+    const v = verdict(t, C.n);
+    return `<b>${t.name}</b> <span class="muted">${t.pos}${["st", "nd", "rd"][t.pos - 1] || "th"}</span>
+      <div class="row"><span>Points / xPts</span><span>${t.pts} / ${fmt1(t.xpts)}</span></div>
+      <div class="row"><span>Luck</span><span>${fmtSigned(t.luck)} (${fmtSigned2(luckPg(t))}/game)</span></div>
+      <div class="row"><span>Elo change</span><span>${fmtSigned(t.elo - t.elo0).replace(".0", "")}</span></div>
+      <div class="row"><span>Verdict</span><span>${v.title.split(":")[0].split(",")[0]}</span></div>
+      <div class="muted">Click to focus</div>`;
+  }
+
+  function chartDecision(C) {
+    const T = C.teams;
+    const F = frame("chart-decision", 330, { t: 22, r: 12, b: 38, l: 48 });
+    const de = (t) => t.elo - t.elo0;
+    const xm = Math.max(0.8, d3.max(T, (t) => Math.abs(luckPg(t))) * 1.12);
+    const ym = Math.max(70, d3.max(T, (t) => Math.abs(de(t))) * 1.12);
+    const x = d3.scaleLinear().domain([-xm, xm]).range([0, F.w]);
+    const y = d3.scaleLinear().domain([-ym, ym]).range([F.h, 0]);
+    // verdict zones (checked in the same order as verdict())
+    const zones = [
+      { v: "--critical", x0: -LUCK_T, x1: xm, y0: -ym, y1: -ELO_T, label: "Genuine decline", lx: xm, ly: -ym, a: "end", dy: -8 },
+      { v: "--serious", x0: -xm, x1: -LUCK_T, y0: -ym, y1: -ELO_T, label: "Declining & unlucky", lx: -xm, ly: -ym, a: "start", dy: -8 },
+      { v: "--good", x0: -xm, x1: -LUCK_T, y0: -ELO_T, y1: ym, label: "Stick", lx: -xm, ly: ym, a: "start", dy: 16 },
+      { v: "--warning", x0: LUCK_T, x1: xm, y0: -ELO_T, y1: ELO_T, label: "Caution", lx: xm, ly: ELO_T, a: "end", dy: 16 },
+    ];
+    zones.forEach((z) => F.g.append("rect").attr("x", x(z.x0)).attr("width", x(z.x1) - x(z.x0))
+      .attr("y", y(z.y1)).attr("height", y(z.y0) - y(z.y1)).attr("fill", css(z.v)).attr("opacity", 0.13));
+    grid(F.g, y, F.w);
+    axes(F.g, x, y, F.h, { xt: 5, xf: (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1), yf: (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) });
+    F.g.append("line").attr("x1", x(0)).attr("x2", x(0)).attr("y1", 0).attr("y2", F.h).attr("stroke", css("--axis"));
+    F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", y(0)).attr("y2", y(0)).attr("stroke", css("--axis"));
+    [[x(-LUCK_T), 0, x(-LUCK_T), F.h], [x(LUCK_T), y(ELO_T), x(LUCK_T), y(-ELO_T)], [0, y(-ELO_T), F.w, y(-ELO_T)], [x(LUCK_T), y(ELO_T), F.w, y(ELO_T)]]
+      .forEach(([x1, y1, x2, y2]) => F.g.append("line").attr("x1", x1).attr("y1", y1).attr("x2", x2).attr("y2", y2)
+        .attr("stroke", css("--text-muted")).attr("stroke-width", 1).attr("stroke-dasharray", "3 3"));
+    const zoneText = zones.map((z) => ({ z, el: F.g.append("text").attr("class", "label-secondary zone-label").attr("x", x(z.lx) + (z.a === "start" ? 6 : -6))
+      .attr("y", y(z.ly) + z.dy).attr("text-anchor", z.a).text(z.label) }));
+    F.g.append("text").attr("class", "label-secondary zone-label").attr("x", x(0) + 6).attr("y", y(ym) + 16).text("On track");
+    axisLabel(F.g, "Luck per game (pts − xPts) →", F.w, F.h + 32, "end");
+    axisLabel(F.g, "↑ Elo change since season start", -40, -10);
+
+    const focus = T[state.team];
+    F.g.selectAll("circle.team").data(T.filter((t) => t.i !== state.team)).join("circle").attr("class", "team")
+      .attr("cx", (t) => x(luckPg(t))).attr("cy", (t) => y(de(t))).attr("r", 4.5)
+      .attr("fill", css("--text-muted")).attr("stroke", css("--surface-1")).attr("stroke-width", 1.5);
+    F.g.append("circle").attr("cx", x(luckPg(focus))).attr("cy", y(de(focus))).attr("r", 7)
+      .attr("fill", css("--series-1")).attr("stroke", css("--surface-1")).attr("stroke-width", 2);
+    const right = x(luckPg(focus)) > F.w * 0.7;
+    const fl = F.g.append("text").attr("class", "label-primary").attr("x", x(luckPg(focus)) + (right ? -11 : 11)).attr("y", y(de(focus)) + 4)
+      .attr("text-anchor", right ? "end" : "start").text(focus.name);
+    // a zone label that collides with the focus dot or its name moves to the other edge of its zone
+    const fb = fl.node().getBBox(), cx0 = x(luckPg(focus)), cy0 = y(de(focus));
+    const box = { x: Math.min(fb.x, cx0 - 9), y: Math.min(fb.y, cy0 - 9), x2: Math.max(fb.x + fb.width, cx0 + 9), y2: Math.max(fb.y + fb.height, cy0 + 9) };
+    zoneText.forEach(({ z, el }) => {
+      const b = el.node().getBBox();
+      if (b.x < box.x2 && b.x + b.width > box.x && b.y < box.y2 && b.y + b.height > box.y) {
+        const otherY = z.ly === z.y0 ? z.y1 : z.y0;
+        el.attr("y", y(otherY) + (otherY === z.y1 ? 16 : -8));
+      }
+    });
+    if (focus.p < 6) {
+      const note = document.createElement("p");
+      note.className = "chart-note";
+      note.textContent = `Only ${focus.p} game${focus.p === 1 ? "" : "s"} played: positions this early are mostly noise, so no verdict is given yet.`;
+      F.box.appendChild(note);
+    }
+    pickLayer(F, T, (t) => x(luckPg(t)), (t) => y(de(t)), (t, ev) => showTip(clubTip(t, C), ev));
+  }
+
   function chartLuck(C) {
     const T = C.teams;
-    const F = frame("chart-luck", 360, { t: 12, r: 16, b: 38, l: 44 });
+    const F = frame("chart-luck", 360, { t: 22, r: 16, b: 38, l: 44 });
     const max = Math.max(3, d3.max(T, (t) => Math.max(t.pts, t.xpts))) * 1.06;
     const x = d3.scaleLinear().domain([0, max]).range([0, F.w]).nice();
     const y = d3.scaleLinear().domain([0, max]).range([F.h, 0]).nice();
+    const dm = Math.min(x.domain()[1], y.domain()[1]);
+    // normal-range band: ±0.25 pts/game over a typical number of games played
+    const band = LUCK_T * (d3.median(T, (t) => t.p) || 0);
+    const clipId = "clip-luck";
+    F.svg.append("defs").append("clipPath").attr("id", clipId).append("rect").attr("width", F.w).attr("height", F.h);
+    F.g.append("path").attr("clip-path", `url(#${clipId})`).attr("fill", css("--other")).attr("opacity", 0.22)
+      .attr("d", `M${x(0)},${y(band)}L${x(dm)},${y(dm + band)}L${x(dm)},${y(dm - band)}L${x(0)},${y(-band)}Z`);
     grid(F.g, y, F.w);
     axes(F.g, x, y, F.h);
     axisLabel(F.g, "Expected points (xPts) →", F.w, F.h + 32, "end");
-    axisLabel(F.g, "Actual points", 0, -2);
-    const dm = Math.min(x.domain()[1], y.domain()[1]);
+    axisLabel(F.g, "↑ Actual points", -36, -10);
     F.g.append("line").attr("x1", x(0)).attr("y1", y(0)).attr("x2", x(dm)).attr("y2", y(dm))
-      .attr("stroke", css("--axis")).attr("stroke-width", 1.5).attr("stroke-dasharray", "4 4");
-    F.g.append("text").attr("class", "label-secondary").attr("x", x(dm * 0.97)).attr("y", y(dm * 0.97) - 8)
-      .attr("text-anchor", "end").text("results = performance");
-    F.g.append("text").attr("class", "label-secondary").attr("x", 6).attr("y", 12).text("↖ flattered by results");
+      .attr("stroke", css("--text-muted")).attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
+    F.g.append("text").attr("class", "label-secondary").attr("x", 8).attr("y", 14).text("↖ flattered by results");
     F.g.append("text").attr("class", "label-secondary").attr("x", F.w - 4).attr("y", F.h - 8).attr("text-anchor", "end").text("unlucky ↘");
 
     const sorted = [...T].sort((a, b) => (a.i === state.team) - (b.i === state.team));
     F.g.selectAll("circle.team").data(sorted).join("circle").attr("class", "team")
       .attr("cx", (t) => x(t.xpts)).attr("cy", (t) => y(t.pts))
       .attr("r", (t) => (t.i === state.team ? 7 : 5))
-      .attr("fill", (t) => (t.i === state.team ? css("--series-1") : css("--other")))
-      .attr("stroke", css("--surface-1")).attr("stroke-width", 2)
-      .style("cursor", "pointer")
-      .on("mousemove", (ev, t) => showTip(`<b>${t.name}</b><div class="row"><span>Points</span><span>${t.pts}</span></div>
-        <div class="row"><span>xPts</span><span>${fmt1(t.xpts)}</span></div>
-        <div class="row"><span>Luck</span><span>${fmtSigned(t.luck)}</span></div>
-        <div class="muted">Click to focus</div>`, ev))
-      .on("mouseleave", hideTip)
-      .on("click", (ev, t) => { state.team = t.i; renderLive(); });
+      .attr("fill", luckColor)
+      .attr("stroke", (t) => (t.i === state.team ? css("--text-primary") : css("--surface-1")))
+      .attr("stroke-width", 2);
+    pickLayer(F, T, (t) => x(t.xpts), (t) => y(t.pts), (t, ev) => showTip(clubTip(t, C), ev));
+    legend(F.box, [
+      { label: "Flattered (≥ +0.25 pts/game)", color: css("--div-pos"), kind: "dot" },
+      { label: "Unlucky (≤ −0.25)", color: css("--div-neg"), kind: "dot" },
+      { label: "Normal range", color: css("--other"), kind: "dot" },
+      { label: "Selected club", color: "", kind: "ring" },
+    ]);
 
     // selective labels: focus + 2 luckiest + 2 unluckiest
     const byLuck = [...T].sort((a, b) => b.luck - a.luck);
@@ -232,17 +327,35 @@
   function chartTraj(C) {
     const t = C.teams[state.team];
     document.getElementById("traj-title").textContent = `${t.name}: points vs expected, game by game`;
-    const F = frame("chart-traj", 360, { t: 12, r: 64, b: 38, l: 44 });
+    const F = frame("chart-traj", 400, { t: 12, r: 64, b: 38, l: 44 });
     if (!t.games.length) { F.box.innerHTML = '<p class="empty">No games played yet at this matchday.</p>'; return; }
     let cp = 0, cx = 0;
     const rows = [{ g: 0, p: 0, x: 0 }].concat(t.games.map((gm, k) => {
       cp += gm.pts; cx += gm.xp; return { g: k + 1, p: cp, x: cx, gm };
     }));
+    // top: cumulative lines; bottom strip: per-game luck (own scale, own panel)
+    const stripH = 64, gap = 26, mainH = F.h - stripH - gap;
     const x = d3.scaleLinear().domain([0, Math.max(rows.length - 1, 1)]).range([0, F.w]);
-    const y = d3.scaleLinear().domain([0, d3.max(rows, (r) => Math.max(r.p, r.x)) * 1.08 || 3]).range([F.h, 0]).nice();
+    const y = d3.scaleLinear().domain([0, d3.max(rows, (r) => Math.max(r.p, r.x)) * 1.08 || 3]).range([mainH, 0]).nice();
     grid(F.g, y, F.w);
-    axes(F.g, x, y, F.h, { xt: Math.min(10, rows.length - 1), xf: d3.format("d") });
+    F.g.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5).tickSizeOuter(0)).call((s) => s.select(".domain").remove());
+    F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", mainH).attr("y2", mainH).attr("stroke", css("--axis"));
+    F.g.append("g").attr("class", "axis").attr("transform", `translate(0,${F.h})`)
+      .call(d3.axisBottom(x).ticks(Math.min(10, rows.length - 1)).tickSizeOuter(0).tickFormat(d3.format("d")));
     axisLabel(F.g, "Games played →", F.w, F.h + 32, "end");
+    const s0 = mainH + gap;
+    const lm = Math.max(1.5, d3.max(t.games, (gm) => Math.abs(gm.pts - gm.xp)));
+    const ys = d3.scaleLinear().domain([-lm, lm]).range([F.h, s0]);
+    axisLabel(F.g, "Each game: points − xPts", 0, s0 - 8);
+    F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", ys(0)).attr("y2", ys(0)).attr("stroke", css("--axis"));
+    const bw = Math.max(2, Math.min(12, F.w / rows.length - 3));
+    F.g.selectAll("rect.gbar").data(rows.slice(1)).join("rect").attr("class", "gbar")
+      .attr("x", (r) => x(r.g) - bw / 2).attr("width", bw).attr("rx", Math.min(2, bw / 2))
+      .attr("y", (r) => Math.min(ys(0), ys(r.gm.pts - r.gm.xp)))
+      .attr("height", (r) => Math.max(1, Math.abs(ys(r.gm.pts - r.gm.xp) - ys(0))))
+      .attr("fill", (r) => (r.gm.pts - r.gm.xp >= 0 ? css("--div-pos") : css("--div-neg")));
+    F.g.append("text").attr("class", "label-secondary").attr("x", F.w + 6).attr("y", ys(lm * 0.55) + 4).text("lucky");
+    F.g.append("text").attr("class", "label-secondary").attr("x", F.w + 6).attr("y", ys(-lm * 0.55) + 4).text("unlucky");
     // gap area
     F.g.append("path").datum(rows)
       .attr("fill", t.luck >= 0 ? css("--div-pos") : css("--div-neg")).attr("opacity", 0.1)
@@ -259,7 +372,10 @@
     const sep = Math.abs(ly1 - ly2) < 14 ? (ly1 < ly2 ? -7 : 7) : 0;
     F.g.append("text").attr("class", "label-primary").attr("x", x(last.g) + 8).attr("y", ly1 + 4 + sep).text(`${last.p} pts`);
     F.g.append("text").attr("class", "label-secondary").attr("x", x(last.g) + 8).attr("y", ly2 + 4 - sep).text(`${fmt1(last.x)} xPts`);
-    legend(F.box, [{ label: "Actual points", color: css("--series-1") }, { label: "Expected points (xPts)", color: "", kind: "dash" }]);
+    legend(F.box, [
+      { label: "Actual points", color: css("--series-1") }, { label: "Expected points (xPts)", color: "", kind: "dash" },
+      { label: "Game above xPts", color: css("--div-pos"), kind: "band" }, { label: "Game below xPts", color: css("--div-neg"), kind: "band" },
+    ]);
 
     // crosshair hover
     const cross = F.g.append("line").attr("y1", 0).attr("y2", F.h).attr("stroke", css("--axis")).attr("visibility", "hidden");
@@ -274,7 +390,8 @@
           <div>${r.gm.home ? "vs" : "at"} ${opp}: <b>${r.gm.gf}–${r.gm.ga}</b></div>
           <div class="row"><span>Points earned / expected</span><span>${r.gm.pts} / ${fmt1(r.gm.xp)}</span></div>
           <div class="row"><span>Cumulative pts</span><span>${r.p}</span></div>
-          <div class="row"><span>Cumulative xPts</span><span>${fmt1(r.x)}</span></div>`, ev);
+          <div class="row"><span>Cumulative xPts</span><span>${fmt1(r.x)}</span></div>
+          <div class="row"><span>Game luck</span><span>${fmtSigned(r.gm.pts - r.gm.xp)}</span></div>`, ev);
       })
       .on("mouseleave", () => { cross.attr("visibility", "hidden"); hideTip(); });
   }
@@ -282,24 +399,32 @@
   function chartElo(C) {
     const t = C.teams[state.team];
     document.getElementById("elo-title").textContent = `${t.name}: underlying strength (Elo)`;
-    const F = frame("chart-elo", 300, { t: 14, r: 64, b: 38, l: 48 });
+    const F = frame("chart-elo", 320, { t: 14, r: 76, b: 38, l: 48 });
     const rows = [{ g: 0, elo: t.elo0 }].concat(t.games.map((gm, k) => ({ g: k + 1, elo: gm.elo, gm })));
-    const avg = d3.mean(C.teams, (u) => u.elo);
-    const ext = d3.extent(rows.map((r) => r.elo).concat([avg]));
+    // reference levels as of this matchday: 4th-strongest and last-safe club by Elo
+    const elos = C.teams.map((u) => u.elo).sort((a, b) => b - a);
+    const top4 = elos[3], safe = elos[C.n - C.relN - 1];
+    const ext = d3.extent(rows.map((r) => r.elo).concat([top4, safe]));
     const x = d3.scaleLinear().domain([0, Math.max(rows.length - 1, 1)]).range([0, F.w]);
     const y = d3.scaleLinear().domain([ext[0] - 20, ext[1] + 20]).range([F.h, 0]).nice();
+    F.g.append("rect").attr("x", 0).attr("width", F.w).attr("y", y(top4)).attr("height", y(safe) - y(top4))
+      .attr("fill", css("--other")).attr("opacity", 0.16);
     grid(F.g, y, F.w);
     axes(F.g, x, y, F.h, { xt: Math.min(10, Math.max(1, rows.length - 1)), xf: d3.format("d"), yf: d3.format("d") });
     axisLabel(F.g, "Games played →", F.w, F.h + 32, "end");
-    F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", y(avg)).attr("y2", y(avg))
-      .attr("stroke", css("--text-muted")).attr("stroke-dasharray", "5 4").attr("stroke-width", 1.5);
-    F.g.append("text").attr("class", "label-secondary").attr("x", F.w + 6).attr("y", y(avg) + 4).text("league avg");
+    [[top4, "top-4 level"], [safe, "drop-zone line"]].forEach(([v, lab]) => {
+      F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", y(v)).attr("y2", y(v))
+        .attr("stroke", css("--text-muted")).attr("stroke-dasharray", "4 4").attr("stroke-width", 1);
+      F.g.append("text").attr("class", "label-secondary").attr("x", F.w + 6).attr("y", y(v) + 4).text(lab);
+    });
+    F.g.append("text").attr("class", "label-secondary").attr("x", 6).attr("y", (y(top4) + y(safe)) / 2 + 4).text("mid-table range");
     F.g.append("path").datum(rows).attr("fill", "none").attr("stroke", css("--series-1")).attr("stroke-width", 2)
       .attr("stroke-linejoin", "round").attr("d", d3.line().x((r) => x(r.g)).y((r) => y(r.elo)));
     const last = rows[rows.length - 1];
     F.g.append("circle").attr("cx", x(last.g)).attr("cy", y(last.elo)).attr("r", 4.5)
       .attr("fill", css("--series-1")).attr("stroke", css("--surface-1")).attr("stroke-width", 2);
-    const labY = Math.abs(y(last.elo) - y(avg)) < 14 ? y(last.elo) + (y(last.elo) < y(avg) ? -6 : 16) : y(last.elo) + 4;
+    const near = [top4, safe].find((v) => Math.abs(y(last.elo) - y(v)) < 14);
+    const labY = near !== undefined ? y(last.elo) + (y(last.elo) < y(near) ? -6 : 16) : y(last.elo) + 4;
     F.g.append("text").attr("class", "label-primary").attr("x", x(last.g) + 8).attr("y", labY).text(Math.round(last.elo));
     const cross = F.g.append("line").attr("y1", 0).attr("y2", F.h).attr("stroke", css("--axis")).attr("visibility", "hidden");
     F.g.append("rect").attr("width", F.w).attr("height", F.h).attr("fill", "transparent")
@@ -319,7 +444,7 @@
   function chartProj(C) {
     const t = C.teams[state.team];
     document.getElementById("proj-title").textContent = `${t.name}: where the season ends`;
-    const F = frame("chart-proj", 300, { t: 14, r: 16, b: 38, l: 44 });
+    const F = frame("chart-proj", 320, { t: 22, r: 16, b: 38, l: 44 });
     const counts = d3.rollups(t.finals, (v) => v.length, (v) => v).sort((a, b) => a[0] - b[0]);
     const x = d3.scaleBand().domain(d3.range(d3.min(counts, (c) => c[0]), d3.max(counts, (c) => c[0]) + 1)).range([0, F.w]).padding(0.12);
     const y = d3.scaleLinear().domain([0, d3.max(counts, (c) => c[1]) / SIMS]).range([F.h, 0]).nice();
@@ -340,6 +465,12 @@
       })
       .on("mousemove", (ev, c) => showTip(`<b>${c[0]} points</b><div class="row"><span>Probability</span><span>${(c[1] / SIMS * 100).toFixed(1)}%</span></div>`, ev))
       .on("mouseleave", hideTip);
+    // marker at the average outcome
+    const mx = x(Math.round(t.projMean)) + x.bandwidth() / 2;
+    F.g.append("line").attr("x1", mx).attr("x2", mx).attr("y1", -6).attr("y2", F.h)
+      .attr("stroke", css("--text-primary")).attr("stroke-width", 1).attr("stroke-dasharray", "3 3");
+    F.g.append("text").attr("class", "label-primary").attr("x", mx).attr("y", -10).attr("text-anchor", "middle")
+      .text(`expected ${Math.round(t.projMean)} pts`);
     legend(F.box, [
       { label: `80% range: ${t.projLo}–${t.projHi} pts`, color: css("--series-1"), kind: "dot" },
       { label: "Less likely outcomes", color: css("--other"), kind: "dot" },
@@ -378,10 +509,16 @@
     { key: "xpts", label: "xPts", f: (t) => fmt1(t.xpts) },
     { key: "luck", label: "Luck (pts − xPts)", f: null },
     { key: "elo", label: "Elo", f: (t) => Math.round(t.elo) },
+    { key: "eloRank", label: "Strength rank", f: (t) => {
+      const d = t.pos - t.eloRank;
+      return `${t.eloRank}<span class="delta">${d > 0 ? "▲" + d : d < 0 ? "▼" + -d : ""}</span>`;
+    } },
     { key: "projMean", label: "Proj. pts", f: (t) => Math.round(t.projMean) },
-    { key: "pTop4", label: "Top 4", f: (t) => pct(t.pTop4) },
-    { key: "pRel", label: "Bottom 3", f: (t) => pct(t.pRel) },
+    { key: "pTop4", label: "Top 4", f: (t) => pct(t.pTop4), tint: true },
+    { key: "pRel", label: "Bottom 3", f: (t) => pct(t.pRel), tint: true },
   ];
+  // single-hue tint for probability cells: stronger = more likely
+  const tint = (p) => `background:color-mix(in srgb, var(--series-1) ${Math.round(p * 38)}%, transparent)`;
   function renderTable(C) {
     const maxLuck = Math.max(1, d3.max(C.teams, (t) => Math.abs(t.luck)));
     const { key, dir } = state.sort;
@@ -390,7 +527,7 @@
       return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * dir;
     });
     const bar = (v) => {
-      const w = 64, half = w / 2, len = Math.abs(v) / maxLuck * (half - 2);
+      const w = 90, half = w / 2, len = Math.abs(v) / maxLuck * (half - 2);
       const xx = v >= 0 ? half : half - len;
       return `<svg width="${w}" height="12" aria-hidden="true"><line x1="${half}" x2="${half}" y1="0" y2="12" stroke="var(--axis)"/>
         <rect x="${xx}" y="2" width="${Math.max(len, 0.5)}" height="8" rx="2" fill="var(${v >= 0 ? "--div-pos" : "--div-neg"})"/></svg>`;
@@ -401,8 +538,15 @@
       <tbody>${rows.map((t) => {
         const zone = t.pos <= 4 ? "zone-top" : t.pos > C.n - C.relN ? "zone-rel" : "";
         return `<tr data-i="${t.i}" class="${zone} ${t.i === state.team ? "focus" : ""}">${COLS.map((c) =>
-          c.key === "luck" ? `<td class="luck"><span class="luckbar">${fmtSigned(t.luck)} ${bar(t.luck)}</span></td>` : `<td>${c.f(t)}</td>`).join("")}</tr>`;
+          c.key === "luck" ? `<td class="luck"><span class="luckbar">${fmtSigned(t.luck)} ${bar(t.luck)}</span></td>`
+            : `<td${c.tint ? ` style="${tint(t[c.key])}"` : ""}>${c.f(t)}</td>`).join("")}</tr>`;
       }).join("")}</tbody>`;
+    document.getElementById("table-legend").innerHTML = [
+      [`zone" style="background:var(--good)`, "Top-4 places"], [`zone" style="background:var(--critical)`, `Bottom ${C.relN}`],
+      [`band" style="background:var(--div-pos)`, "Points above xPts"], [`band" style="background:var(--div-neg)`, "Points below xPts"],
+      [`band" style="background:color-mix(in srgb, var(--series-1) 38%, transparent)`, "Shading = probability"],
+    ].map(([k, l]) => `<span><i class="${k}"></i>${l}</span>`).join("") +
+      `<span>▲/▼ = places higher/lower on strength than in the table</span>`;
     tbl.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
       const k = th.dataset.k;
       state.sort = state.sort.key === k ? { key: k, dir: -state.sort.dir } : { key: k, dir: ["pos", "name", "pRel"].includes(k) ? 1 : -1 };
@@ -434,16 +578,31 @@
       F.g.append("line").attr("x1", 0).attr("x2", F.w).attr("y1", y(0)).attr("y2", y(0)).attr("stroke", css("--axis"));
       axisLabel(F.g, "Luck, 1st half (pts/game) →", F.w, F.h + 32, "end");
       axisLabel(F.g, "Luck, 2nd half", 0, -2);
+      // "if luck persisted" reference diagonal
+      F.g.append("line").attr("x1", x(-1.3)).attr("y1", y(-1.3)).attr("x2", x(1.3)).attr("y2", y(1.3))
+        .attr("stroke", css("--text-muted")).attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
+      F.g.append("text").attr("class", "label-secondary").attr("x", x(1.25)).attr("y", y(1.25) + 14)
+        .attr("text-anchor", "end").text("if luck persisted");
       F.g.append("g").selectAll("circle").data(pts).join("circle")
-        .attr("cx", (d) => x(d[0])).attr("cy", (d) => y(d[1])).attr("r", 2.6)
-        .attr("fill", css("--series-1")).attr("opacity", 0.32);
-      // regression line (slope ~0)
-      const mx = d3.mean(pts, (d) => d[0]), my = d3.mean(pts, (d) => d[1]);
-      const b = d3.sum(pts, (d) => (d[0] - mx) * (d[1] - my)) / d3.sum(pts, (d) => (d[0] - mx) ** 2);
-      F.g.append("line").attr("x1", x(-1.3)).attr("x2", x(1.3)).attr("y1", y(my + b * (-1.3 - mx))).attr("y2", y(my + b * (1.3 - mx)))
-        .attr("stroke", css("--text-primary")).attr("stroke-width", 2);
-      F.g.append("text").attr("class", "label-primary").attr("x", x(1.25)).attr("y", y(my + b * (1.25 - mx)) - 8)
-        .attr("text-anchor", "end").text(`trend: r = ${st.pae_persistence_r.toFixed(2)}`);
+        .attr("cx", (d) => x(d[0])).attr("cy", (d) => y(d[1])).attr("r", 2.4)
+        .attr("fill", css("--series-1")).attr("opacity", 0.22);
+      // average 2nd-half luck within each tenth of 1st-half luck
+      const srt = [...pts].sort((a, b) => a[0] - b[0]);
+      const dec = d3.range(10).map((k) => {
+        const s = srt.slice(Math.floor(k * srt.length / 10), Math.floor((k + 1) * srt.length / 10));
+        return { k, x: d3.mean(s, (d) => d[0]), y: d3.mean(s, (d) => d[1]), n: s.length };
+      });
+      F.g.append("path").datum(dec).attr("fill", "none").attr("stroke", css("--series-2")).attr("stroke-width", 2)
+        .attr("d", d3.line().x((d) => x(d.x)).y((d) => y(d.y)));
+      F.g.selectAll("circle.dec").data(dec).join("circle").attr("class", "dec")
+        .attr("cx", (d) => x(d.x)).attr("cy", (d) => y(d.y)).attr("r", 4.5)
+        .attr("fill", css("--series-2")).attr("stroke", css("--surface-1")).attr("stroke-width", 2);
+      F.g.append("text").attr("class", "label-primary").attr("x", x(1.25)).attr("y", y(-1.12))
+        .attr("text-anchor", "end").text(`r = ${st.pae_persistence_r.toFixed(2)}`);
+      legend(F.box, [
+        { label: "Club-season", color: css("--series-1"), kind: "dot" },
+        { label: "Average per tenth of 1st-half luck", color: css("--series-2"), kind: "dot" },
+      ]);
       const del = d3.Delaunay.from(pts, (d) => x(d[0]), (d) => y(d[1]));
       const ring = F.g.append("circle").attr("r", 5).attr("fill", css("--series-1")).attr("stroke", css("--surface-1")).attr("stroke-width", 2).attr("visibility", "hidden");
       F.g.append("rect").attr("width", F.w).attr("height", F.h).attr("fill", "transparent")
@@ -574,6 +733,7 @@
     outM.textContent = `${state.md}${state.md >= state.maxMd ? " (final)" : ` of ${state.maxMd}`}`;
     selT.value = state.team;
     renderVerdict(C);
+    chartDecision(C);
     chartLuck(C);
     chartTraj(C);
     chartElo(C);

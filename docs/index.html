@@ -35,23 +35,32 @@
 
 <main class="wrap">
 
-  <section class="panel verdict-panel" aria-live="polite">
-    <div class="verdict" id="verdict"></div>
-    <div class="tiles" id="tiles"></div>
+  <section class="panel verdict-panel">
+    <div class="verdict-left" aria-live="polite">
+      <div class="verdict" id="verdict"></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <figure class="chart decision">
+      <figcaption>
+        <h2>Decision map</h2>
+        <p>Every club placed by luck per game and change in strength. The shaded zones are the verdict rule; click a dot to focus that club.</p>
+      </figcaption>
+      <div id="chart-decision" class="chart-box"></div>
+    </figure>
   </section>
 
   <section class="grid2">
     <figure class="panel chart">
       <figcaption>
         <h2>Luck map</h2>
-        <p>Actual points vs expected points (xPts) for every club so far. Above the line = results flatter the team; below = the team deserves more.</p>
+        <p>Actual points vs expected points (xPts) for every club so far. Above the band, results flatter the team; below it, the team deserves more.</p>
       </figcaption>
       <div id="chart-luck" class="chart-box"></div>
     </figure>
     <figure class="panel chart">
       <figcaption>
         <h2 id="traj-title">Points vs expected, game by game</h2>
-        <p>Cumulative points against cumulative xPts. A widening gap is luck accumulating, and history says it does not last.</p>
+        <p>Cumulative points against cumulative xPts, with each game's luck underneath. A widening gap is luck accumulating, and history says it does not last.</p>
       </figcaption>
       <div id="chart-traj" class="chart-box"></div>
     </figure>
@@ -61,7 +70,7 @@
     <figure class="panel chart">
       <figcaption>
         <h2 id="elo-title">Underlying strength (Elo)</h2>
-        <p>Elo rating after each game. This is the signal a board should watch: it predicts the rest of the season better than points do.</p>
+        <p>Elo rating after each game, against today's top-4 and drop-zone levels. This is the signal a board should watch: it predicts the rest of the season better than points do.</p>
       </figcaption>
       <div id="chart-elo" class="chart-box"></div>
     </figure>
@@ -77,11 +86,12 @@
   <section class="panel">
     <div class="table-head">
       <h2>Table, with the luck stripped out</h2>
-      <p>Click a column to sort, a row to focus a club. Projection and probabilities come from the simulation.</p>
+      <p>Click a column to sort, a row to focus a club. Strength rank is where Elo alone would place the club; projection and probabilities come from the simulation.</p>
     </div>
     <div class="table-scroll">
       <table id="standings"></table>
     </div>
+    <div class="legend table-legend" id="table-legend"></div>
   </section>
 
   <section class="evidence">
@@ -91,7 +101,7 @@
       <figure class="panel chart">
         <figcaption>
           <h3>Luck in the first half vs the second</h3>
-          <p>Each dot is a club-season. If luck were a skill, dots would line up along a diagonal. They don't.</p>
+          <p>Each dot is a club-season. If luck were a skill, the averages would climb along a diagonal. They stay flat at zero.</p>
         </figcaption>
         <div id="chart-persist" class="chart-box"></div>
       </figure>
