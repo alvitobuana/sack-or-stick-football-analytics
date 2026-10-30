@@ -33,11 +33,13 @@ From **1,206 complete club-seasons** across the Premier League, LaLiga, Bundesli
 
 - **Verdict card:** a transparent rule turns two numbers, luck (points − expected points) and strength change (Elo now − Elo at season start), into a call: *Stick*, *Caution: results are flattering*, *Genuine decline*, *Declining and unlucky*, or *On track*.
 - **Time machine:** pick any league, any season since 2011-12 and any matchday. Everything is recomputed using only information available at that point, so you can replay a past season and check whether the verdict was right.
-- **Luck map:** actual vs expected points for every club.
-- **Game-by-game trajectory:** cumulative points vs cumulative xPts, and the Elo curve.
+- **Decision map:** every club plotted by luck per game vs change in Elo, with the verdict rule drawn as shaded zones. Click a club to focus it.
+- **Luck map:** actual vs expected points for every club, colored flattered / unlucky / within the normal range.
+- **Game-by-game trajectory:** cumulative points vs cumulative xPts, with each match's luck as a bar underneath.
+- **Strength curve:** Elo after each game against the current top-4 and drop-zone levels.
 - **Season projection:** 5,000 Monte Carlo simulations of the remaining fixtures → projected points, 80% range, top-4 and relegation probabilities.
-- **Luck-adjusted table:** sortable standings with xPts, luck, Elo and projections.
-- **Evidence section:** the midseason study and an out-of-sample calibration check.
+- **Luck-adjusted table:** sortable standings with xPts, luck, Elo, strength rank (where Elo alone would place the club) and projections.
+- **Evidence section:** the midseason study (average second-half luck per tenth of first-half luck) and an out-of-sample calibration check.
 
 ## Method
 
@@ -85,7 +87,7 @@ No build step and no server code: the dashboard is plain HTML, CSS and JavaScrip
 
 ## Deploy on GitHub Pages
 
-Repository **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `/docs`**. The site appears at `https://<username>.github.io/sack-or-stick/` within a minute or two.
+Repository **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `/docs`**. The site appears at `https://<username>.github.io/<repo-name>/` within a minute or two (this one: https://alvitobuana.github.io/sack-or-stick-football-analytics/).
 
 ## License
 

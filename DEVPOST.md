@@ -14,8 +14,10 @@ Sack or Stick? is an interactive dashboard covering every match in Europe's top-
 
 - **A verdict**: a transparent rule combines *luck* (points minus expected points) and *strength change* (Elo now vs season start) into a call such as "Stick: the results will come", "Caution: results are flattering" or "Genuine decline, review warranted".
 - **A time machine**: every view is recomputed using only information available at the chosen matchday, so any past season can be replayed to check whether the verdict was right.
-- **A luck map** of actual vs expected points for every club, game-by-game trajectories, the Elo strength curve, and **5,000 Monte Carlo simulations** of the remaining fixtures (projected points, top-4 and relegation odds).
-- **An evidence section** proving why luck should be ignored.
+- **A decision map**: every club plotted by luck per game against change in strength, with the verdict rule drawn as shaded zones, so a board member can see at a glance why a club gets its verdict and how it compares with the rest of the league.
+- **A luck map** of actual vs expected points for every club (colored flattered / unlucky / normal range), game-by-game trajectories with each match's luck underneath, the Elo strength curve against the top-4 and drop-zone levels, and **5,000 Monte Carlo simulations** of the remaining fixtures (projected points, top-4 and relegation odds).
+- **A luck-adjusted table** with a strength rank showing where Elo alone would place each club.
+- **An evidence section** proving why luck should be ignored: average second-half luck stays flat at zero across every tenth of first-half luck.
 
 ## Key findings
 Across **1,206 complete club-seasons**, split at the halfway mark:
